@@ -2,6 +2,7 @@
 
 VERSION=$(shell ./genver.sh -r)
 ENABLE_REGEX=1  # Enable regex probes
+USELIBEVENT=1	# Build sslh-libevent?
 USELIBCONFIG=1	# Use libconfig? (necessary to use configuration files)
 USELIBPCRE=	# Use libpcre? (needed for regex on musl)
 USELIBWRAP?=	# Use libwrap?
@@ -67,6 +68,10 @@ version.h:
 
 sslh: sslh-fork sslh-select
 
+ifneq ($(strip $(USELIBEVENT)),)
+sslh: sslh-libevent
+endif
+
 sslh-fork: version.h $(OBJS) sslh-fork.o Makefile common.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o sslh-fork sslh-fork.o $(OBJS) $(LIBS)
 	#strip sslh-fork
@@ -74,6 +79,12 @@ sslh-fork: version.h $(OBJS) sslh-fork.o Makefile common.h
 sslh-select: version.h $(OBJS) sslh-select.o Makefile common.h
 	$(CC) $(CFLAGS) $(LDFLAGS) -o sslh-select sslh-select.o $(OBJS) $(LIBS)
 	#strip sslh-select
+
+sslh-libevent: LIBS += -levent
+
+sslh-libevent: version.h $(OBJS) sslh-libevent.o Makefile common.h
+	$(CC) $(CFLAGS) $(LDFLAGS) -o sslh-libevent sslh-libevent.o $(OBJS) $(LIBS)
+	#strip sslh-libevent
 
 systemd-sslh-generator: systemd-sslh-generator.o
 	$(CC) $(CFLAGS) $(LDFLAGS) -o systemd-sslh-generator systemd-sslh-generator.o -lconfig
@@ -110,7 +121,7 @@ distclean: clean
 	rm -f tags cscope.*
 
 clean:
-	rm -f sslh-fork sslh-select echosrv version.h $(MAN) systemd-sslh-generator *.o *.gcov *.gcno *.gcda *.png *.html *.css *.info
+	rm -f sslh-fork sslh-select sslh-libevent echosrv version.h $(MAN) systemd-sslh-generator *.o *.gcov *.gcno *.gcda *.png *.html *.css *.info
 
 tags:
 	ctags --globals -T *.[ch]

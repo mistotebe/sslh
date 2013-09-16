@@ -48,7 +48,7 @@ if (!($ssl_pid = fork)) {
     exec "./echosrv --listen $ssl_address --prefix 'ssl: '";
 }
 
-my @binaries = ('sslh-select', 'sslh-fork');
+my @binaries = ('sslh-select', 'sslh-fork', 'sslh-libevent');
 for my $binary (@binaries) {
     warn "Testing $binary\n";
 
