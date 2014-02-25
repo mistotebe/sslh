@@ -2,7 +2,7 @@
    sslh-libevent: versatile server
 
 # Copyright (C) 2007-2010  Yves Rutschle
-# Copyright (C) 2013-2013  Ondřej Kuzník
+# Copyright (C) 2013-2014  Ondřej Kuzník
 #
 # This program is free software; you can redistribute it
 # and/or modify it under the terms of the GNU General Public
@@ -46,6 +46,7 @@
 #include <event2/util.h>
 
 const char* server_type = "sslh-libevent";
+ssize_t buffer_size = 20 * 1024;
 
 #define connection connection_libevent
 struct connection {
@@ -101,22 +102,57 @@ void event_cb(struct bufferevent *bev, short flags, void *ctx)
     bufferevent_setcb(other, NULL, shutdown_cb, event_cb, cnx);
 }
 
-void copy_cb(struct bufferevent *bev, void *ctx)
+/*
+ * The read callback is only ever invoked in one of these scenarios:
+ * - at the very beginning for a faster bootstrap
+ * - we have filled the incoming buffer, move the data to the other queue if
+ *   it's not full yet
+ * - otherwise, both buffers had been completely drained, move whatever came in
+ *   to output and since it can now react again, reset watermark to default
+ *
+ * This way, the maximum amount of data buffered will never exceed
+ * 3*buffer_size (except after the probes have finished):
+ * - current bufferevent input which is capped at buffer_size by the
+ *   watermarks
+ * - buffer_size unread in this bufferevent we let accumulate afterwards
+ * - buffer_size already in evbuffer_get_length(output)
+ */
+void read_cb(struct bufferevent *source, void *ctx)
 {
     struct connection *cnx = ctx;
     struct bufferevent *sink;
-    struct evbuffer *input;
+    struct evbuffer *input, *output;
 
-    sink = (bev == cnx->client_bev) ? cnx->server_bev : cnx->client_bev;
-    input = bufferevent_get_input(bev);
+    sink = (source == cnx->client_bev) ? cnx->server_bev : cnx->client_bev;
+    input = bufferevent_get_input(source);
+    output = bufferevent_get_output(sink);
+
+    if (evbuffer_get_length(output) < buffer_size)
+        bufferevent_write_buffer(sink, input);
+
+    bufferevent_setwatermark(source, EV_READ, buffer_size, buffer_size);
+}
+
+void write_cb(struct bufferevent *sink, void *ctx)
+{
+    struct connection *cnx = ctx;
+    struct bufferevent *source;
+    struct evbuffer *input, *output;
+
+    source = (sink == cnx->client_bev) ? cnx->server_bev : cnx->client_bev;
+    input = bufferevent_get_input(source);
+    output = bufferevent_get_output(sink);
 
     bufferevent_write_buffer(sink, input);
+
+    /* We are dry, wake up when there's anything to read */
+    if (evbuffer_get_length(output) == 0)
+        bufferevent_setwatermark(source, EV_READ, 0, buffer_size);
 }
 
 void connect_cb(struct bufferevent *bev, short flags, void *ctx)
 {
     struct connection *cnx = ctx;
-    struct evbuffer *input;
 
     if (flags != BEV_EVENT_CONNECTED) {
         bufferevent_free(bev);
@@ -126,15 +162,18 @@ void connect_cb(struct bufferevent *bev, short flags, void *ctx)
         return;
     }
 
-    input = bufferevent_get_input(cnx->client_bev);
-    bufferevent_write_buffer(bev, input);
-
-    /*TODO set up watermarks to limit the amount of buffering */
-    bufferevent_setcb(cnx->server_bev, copy_cb, NULL, event_cb, cnx);
+    bufferevent_setcb(cnx->server_bev, read_cb, write_cb, event_cb, cnx);
+    bufferevent_setwatermark(cnx->server_bev, EV_READ, buffer_size, buffer_size);
+    bufferevent_setwatermark(cnx->server_bev, EV_WRITE, buffer_size/2, buffer_size/2);
     bufferevent_enable(cnx->server_bev, EV_READ|EV_WRITE);
 
-    bufferevent_setcb(cnx->client_bev, copy_cb, NULL, event_cb, cnx);
+    bufferevent_setcb(cnx->client_bev, read_cb, write_cb, event_cb, cnx);
+    bufferevent_setwatermark(cnx->client_bev, EV_READ, buffer_size, buffer_size);
+    bufferevent_setwatermark(cnx->client_bev, EV_WRITE, buffer_size/2, buffer_size/2);
     bufferevent_enable(cnx->client_bev, EV_READ|EV_WRITE);
+
+    /* Send the first round of data */
+    write_cb(cnx->server_bev, cnx);
 }
 
 int activate_proto(struct proto *p, struct connection *cnx)
@@ -154,6 +193,7 @@ int activate_proto(struct proto *p, struct connection *cnx)
             p->saddr->ai_addrlen))
         return -1;
 
+    printf("Activating protocol %s\n", p->description);
     bufferevent_setcb(cnx->server_bev, NULL, NULL, connect_cb, cnx);
     return 0;
 }

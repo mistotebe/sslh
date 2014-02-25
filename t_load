@@ -18,7 +18,7 @@ use Data::Dumper;
 ## BEGIN TEST CONFIG
 
 # Do we test sslh-select or sslh-fork?
-my $sslh_binary = "./sslh-select";
+my $sslh_binary = "./sslh-libevent";
 
 # How many clients to we start for each protocol?
 my $NUM_CNX = 30;
