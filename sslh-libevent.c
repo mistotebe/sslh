@@ -163,12 +163,12 @@ void connect_cb(struct bufferevent *bev, short flags, void *ctx)
     }
 
     bufferevent_setcb(cnx->server_bev, read_cb, write_cb, event_cb, cnx);
-    bufferevent_setwatermark(cnx->server_bev, EV_READ, buffer_size, buffer_size);
+    bufferevent_setwatermark(cnx->server_bev, EV_READ, 0, buffer_size);
     bufferevent_setwatermark(cnx->server_bev, EV_WRITE, buffer_size/2, buffer_size/2);
     bufferevent_enable(cnx->server_bev, EV_READ|EV_WRITE);
 
     bufferevent_setcb(cnx->client_bev, read_cb, write_cb, event_cb, cnx);
-    bufferevent_setwatermark(cnx->client_bev, EV_READ, buffer_size, buffer_size);
+    bufferevent_setwatermark(cnx->client_bev, EV_READ, 0, buffer_size);
     bufferevent_setwatermark(cnx->client_bev, EV_WRITE, buffer_size/2, buffer_size/2);
     bufferevent_enable(cnx->client_bev, EV_READ|EV_WRITE);
 
