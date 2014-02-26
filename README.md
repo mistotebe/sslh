@@ -59,14 +59,18 @@ of the Makefile:
   file. You will need `libconfig` headers to compile
   (`libconfig8-dev` in Debian).
 
+* `USELIBEVENT` compiles the `sslh-libevent` executable. You
+  will need `libevent` 2.0+ for the performance to be worth
+  it (`libevent-dev` on Debian Wheezy and later will do).
+
 *  `USESYSTEMD` compiles support for using systemd socket activation.
    You will need `systemd` headers to compile (`systemd-devel` in Fedora).
 
 Binaries
 --------
 
-The Makefile produces two different executables: `sslh-fork`
-and `sslh-select`:
+The Makefile produces several different executables: `sslh-fork`,
+`sslh-select` and `ssl-libevent`:
 
 * `sslh-fork` forks a new process for each incoming connection.
 It is well-tested and very reliable, but incurs the overhead
@@ -83,9 +87,12 @@ If you are going to use `sslh` on a "medium" setup (a few thousand ssh
 connections, and another few thousand ssl connections),
 `sslh-select` will be better.
 
-If you have a very large site (tens of thousands of connections),
-you'll need a vapourware version that would use libevent or
-something like that.
+* `sslh-libevent` uses only one process and lets libevent use the best
+backend available for the platform (on Linux usually `epoll(7)`) to
+handle all I/O. It is the most recent and potentially the most
+featureful, but also incurs some memory overhead as a price to handle
+the C10K problem while staying as simple as possible. It might be
+useful for large sites, but has not been battle tested yet.
 
 
 Installation
